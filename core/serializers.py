@@ -1,10 +1,15 @@
 from rest_framework import serializers
 from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge
 
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = '__all__'
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'avatar', 'eco_points', 'date_joined', 'email_verified'
+        ]
+        read_only_fields = ['email_verified']
 
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:

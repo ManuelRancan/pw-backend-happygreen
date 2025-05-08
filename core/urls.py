@@ -15,6 +15,7 @@ router.register(r'badges', views.BadgeViewSet)
 router.register(r'user-badges', views.UserBadgeViewSet)
 
 urlpatterns = [
+    path('api/users/me/', views.current_user, name='current-user'),
     path('api/', include(router.urls)),
     path('api/auth/', include('core.auth_urls')),  # Auth routes
 ]
