@@ -1,12 +1,9 @@
-from django.contrib import admin
+# urls.py (principale)
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from core import views  # Assicurati che il percorso al modulo sia corretto
+from core import views
 
-# Crea un router
 router = DefaultRouter()
-
-# Aggiungi i tuoi viewset al router
 router.register(r'users', views.UserViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'group-memberships', views.GroupMembershipViewSet)
@@ -18,6 +15,6 @@ router.register(r'badges', views.BadgeViewSet)
 router.register(r'user-badges', views.UserBadgeViewSet)
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),  # Includi il router per le API
+    path('api/', include(router.urls)),
+    path('api/auth/', include('core.auth_urls')),  # Auth routes
 ]
