@@ -1,6 +1,16 @@
 from rest_framework import serializers
-from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge
+from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore
 
+
+class GameScoreSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()
+
+    def get_username(self, obj):
+        return obj.user.username
+
+    class Meta:
+        model = GameScore
+        fields = ['id', 'user', 'username', 'game_id', 'score', 'timestamp']
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:

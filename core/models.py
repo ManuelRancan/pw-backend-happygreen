@@ -106,3 +106,13 @@ class UserBadge(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     badge = models.ForeignKey(Badge, on_delete=models.CASCADE)
     earned_at = models.DateTimeField(auto_now_add=True)
+
+
+class GameScore(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    game_id = models.CharField(max_length=50)  # 'eco_detective', 'eco_sfida', etc.
+    score = models.IntegerField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-score']

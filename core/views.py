@@ -1,6 +1,7 @@
 from rest_framework import viewsets
-from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge
-from .serializers import UserSerializer, GroupSerializer, GroupMembershipSerializer, PostSerializer, CommentSerializer, DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer
+from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore
+from .serializers import UserSerializer, GroupSerializer, GroupMembershipSerializer, PostSerializer, CommentSerializer, \
+    DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer, GameScoreSerializer
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -52,3 +53,61 @@ class BadgeViewSet(viewsets.ModelViewSet):
 class UserBadgeViewSet(viewsets.ModelViewSet):
     queryset = UserBadge.objects.all()
     serializer_class = UserBadgeSerializer
+
+
+# views.py - Aggiungiamo le view per gestire punteggi e leaderboard
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def update_user_points(request):
+    """
+    Aggiorna i punti eco dell'utente quando guadagna punti in un gioco
+    """
+    points = request.data.get('points', 0)
+    game_id = request.data.get('game_id', '')
+
+    if points <= 0:
+        return Response({'error': 'Punti non validi'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = request.user
+    user.eco_points += points
+    user.save()
+
+    # Salva anche il punteggio nel leaderboard
+    if game_id:
+        GameScore.objects.create(
+            user=user,
+            game_id=game_id,
+            score=points
+        )
+
+    return Response({
+        'success': True,
+        'message': f'Aggiunti {points} punti eco',
+        'total_points': user.eco_points
+    })
+
+
+@api_view(['GET'])
+def get_leaderboard(request):
+    """
+    Ottiene la classifica globale e per gioco specifico
+    """
+    game_id = request.query_params.get('game_id', None)
+
+    if game_id:
+        # Classifica per gioco specifico
+        scores = GameScore.objects.filter(game_id=game_id).order_by('-score')[:50]
+    else:
+        # Classifica globale - raggruppa per utente e somma i punteggi
+        from django.db.models import Sum
+        scores = User.objects.annotate(
+            total_score=Sum('gamescore__score')
+        ).order_by('-total_score')[:50]
+
+    if game_id:
+        serializer = GameScoreSerializer(scores, many=True)
+    else:
+        serializer = UserSerializer(scores, many=True, fields=['id', 'username', 'avatar', 'eco_points'])
+
+    return Response(serializer.data)
