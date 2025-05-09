@@ -87,7 +87,6 @@ def update_user_points(request):
         'total_points': user.eco_points
     })
 
-
 @api_view(['GET'])
 def get_leaderboard(request):
     """
@@ -96,18 +95,14 @@ def get_leaderboard(request):
     game_id = request.query_params.get('game_id', None)
 
     if game_id:
-        # Classifica per gioco specifico
         scores = GameScore.objects.filter(game_id=game_id).order_by('-score')[:50]
+        serializer = GameScoreSerializer(scores, many=True)
     else:
-        # Classifica globale - raggruppa per utente e somma i punteggi
         from django.db.models import Sum
         scores = User.objects.annotate(
             total_score=Sum('gamescore__score')
         ).order_by('-total_score')[:50]
-
-    if game_id:
-        serializer = GameScoreSerializer(scores, many=True)
-    else:
-        serializer = UserSerializer(scores, many=True, fields=['id', 'username', 'avatar', 'eco_points'])
+        from .serializers import LeaderboardUserSerializer
+        serializer = LeaderboardUserSerializer(scores, many=True)
 
     return Response(serializer.data)
