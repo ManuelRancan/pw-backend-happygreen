@@ -208,6 +208,8 @@ from rest_framework.response import Response
 class GroupViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
+    authentication_classes = [TokenAuthentication]  # Add this line
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

@@ -7,7 +7,7 @@ AUTH_USER_MODEL = 'core.User'
 SECRET_KEY = 'django-insecure-rx$^2n!0)3+e72m_!9#+vxu9b1y$f(w=3td!^@(zf=h8q-1n(e'
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '836e-31-26-240-97.ngrok-free.app', '*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '836e-31-26-240-97.ngrok-free.app', '*', 'https://worm-shining-accurately.ngrok-free.app']
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
