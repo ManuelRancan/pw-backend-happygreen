@@ -67,9 +67,21 @@ class Group(models.Model):
     def __str__(self):
         return self.name
 
+
 class GroupMembership(models.Model):
+    ROLE_CHOICES = (
+        ('admin', 'Amministratore'),
+        ('teacher', 'Insegnante'),
+        ('student', 'Studente'),
+    )
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     group = models.ForeignKey(Group, on_delete=models.CASCADE)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'group')
 
 class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

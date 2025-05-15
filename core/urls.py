@@ -5,7 +5,6 @@ from core import views
 
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet)
-router.register(r'groups', views.GroupViewSet)
 router.register(r'group-memberships', views.GroupMembershipViewSet)
 router.register(r'posts', views.PostViewSet)
 router.register(r'comments', views.CommentViewSet)
@@ -13,7 +12,7 @@ router.register(r'detected-objects', views.DetectedObjectViewSet)
 router.register(r'quizzes', views.QuizViewSet)
 router.register(r'badges', views.BadgeViewSet)
 router.register(r'user-badges', views.UserBadgeViewSet)
-
+router.register(r'groups', views.GroupViewSet)
 urlpatterns = [
     # Nota: rimuoviamo 'api/' dal prefisso poiché è già incluso nel file urls.py principale
     path('user/update-points/', views.update_user_points, name='update-user-points'),

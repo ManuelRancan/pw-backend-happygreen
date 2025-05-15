@@ -65,3 +65,26 @@ class LeaderboardUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'avatar', 'eco_points']
+
+
+# serializers.py - Aggiungiamo nuovi serializers
+
+class GroupMembershipDetailSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = GroupMembership
+        fields = ['id', 'user', 'role', 'joined_at']
+
+
+class GroupDetailSerializer(serializers.ModelSerializer):
+    members = serializers.SerializerMethodField()
+    owner_details = UserSerializer(source='owner', read_only=True)
+
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'description', 'created_at', 'owner', 'owner_details', 'members']
+
+    def get_members(self, obj):
+        memberships = GroupMembership.objects.filter(group=obj)
+        return GroupMembershipDetailSerializer(memberships, many=True).data

@@ -1,7 +1,8 @@
 from rest_framework import viewsets, status
 from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore
 from .serializers import UserSerializer, GroupSerializer, GroupMembershipSerializer, PostSerializer, CommentSerializer, \
-    DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer
+    DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer, GroupDetailSerializer, \
+    GroupMembershipDetailSerializer
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -195,3 +196,170 @@ def get_leaderboard(request):
                 pass
 
         return Response(leaderboard_data)
+
+
+# views.py - Nuove views per gestire i gruppi e i membri
+
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+
+class GroupViewSet(viewsets.ModelViewSet):
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return GroupDetailSerializer
+        return GroupSerializer
+
+    def perform_create(self, serializer):
+        # Quando un gruppo viene creato, il creatore diventa proprietario e admin
+        group = serializer.save(owner=self.request.user)
+        GroupMembership.objects.create(
+            user=self.request.user,
+            group=group,
+            role='admin'
+        )
+
+    @action(detail=True, methods=['post'])
+    def add_member(self, request, pk=None):
+        group = self.get_object()
+        user_id = request.data.get('user_id')
+        role = request.data.get('role', 'student')
+
+        # Verifica che solo il proprietario o admin può aggiungere membri
+        is_authorized = GroupMembership.objects.filter(
+            group=group,
+            user=request.user,
+            role__in=['admin']
+        ).exists() or group.owner == request.user
+
+        if not is_authorized:
+            return Response(
+                {'error': 'Non hai il permesso di aggiungere membri'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+
+            # Verifica se l'utente è già membro
+            if GroupMembership.objects.filter(user=user, group=group).exists():
+                return Response(
+                    {'error': 'L\'utente è già membro di questo gruppo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Aggiungi l'utente al gruppo
+            membership = GroupMembership.objects.create(
+                user=user,
+                group=group,
+                role=role
+            )
+
+            return Response(
+                GroupMembershipDetailSerializer(membership).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Utente non trovato'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['delete'])
+    def remove_member(self, request, pk=None):
+        group = self.get_object()
+        user_id = request.data.get('user_id')
+
+        # Verifica che solo il proprietario o admin può rimuovere membri
+        is_authorized = GroupMembership.objects.filter(
+            group=group,
+            user=request.user,
+            role__in=['admin']
+        ).exists() or group.owner == request.user
+
+        if not is_authorized:
+            return Response(
+                {'error': 'Non hai il permesso di rimuovere membri'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            # Non permettere la rimozione del proprietario
+            target_user = User.objects.get(id=user_id)
+            if target_user == group.owner:
+                return Response(
+                    {'error': 'Non puoi rimuovere il proprietario del gruppo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            membership = GroupMembership.objects.get(user=target_user, group=group)
+            membership.delete()
+
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        except (User.DoesNotExist, GroupMembership.DoesNotExist):
+            return Response(
+                {'error': 'Membro non trovato'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['post'])
+    def change_role(self, request, pk=None):
+        group = self.get_object()
+        user_id = request.data.get('user_id')
+        new_role = request.data.get('role')
+
+        # Verifica che solo il proprietario o admin può cambiare ruoli
+        is_authorized = GroupMembership.objects.filter(
+            group=group,
+            user=request.user,
+            role__in=['admin']
+        ).exists() or group.owner == request.user
+
+        if not is_authorized:
+            return Response(
+                {'error': 'Non hai il permesso di cambiare ruoli'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            target_user = User.objects.get(id=user_id)
+            membership = GroupMembership.objects.get(user=target_user, group=group)
+
+            # Non permettere di cambiare il ruolo del proprietario
+            if target_user == group.owner and new_role != 'admin':
+                return Response(
+                    {'error': 'Non puoi cambiare il ruolo del proprietario'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            membership.role = new_role
+            membership.save()
+
+            return Response(GroupMembershipDetailSerializer(membership).data)
+
+        except (User.DoesNotExist, GroupMembership.DoesNotExist):
+            return Response(
+                {'error': 'Membro non trovato'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=False, methods=['get'])
+    def my_groups(self, request):
+        # Ottieni tutti i gruppi di cui l'utente è membro
+        memberships = GroupMembership.objects.filter(user=request.user)
+        groups = [membership.group for membership in memberships]
+
+        # Includi anche i gruppi di cui è proprietario ma non membro
+        owned_groups = Group.objects.filter(owner=request.user)
+        for group in owned_groups:
+            if group not in groups:
+                groups.append(group)
+
+        return Response(GroupSerializer(groups, many=True).data)
