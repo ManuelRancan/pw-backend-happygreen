@@ -19,14 +19,7 @@ EMAIL_HOST_PASSWORD = 'aufp cidi qasi vnxn'  # Use an app password if using Gmai
 DEFAULT_FROM_EMAIL = 'HappyGreen <rancan.manuel@gmail.com>'
 
 
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ]
-}
+
 
 # Add to get the frontend URL
 FRONTEND_URL = 'happygreen://verify-email'  # Update with your frontend URL

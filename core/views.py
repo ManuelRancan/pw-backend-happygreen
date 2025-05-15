@@ -5,7 +5,7 @@ from .serializers import UserSerializer, GroupSerializer, GroupMembershipSeriali
     GroupMembershipDetailSerializer
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db.models import Max, Sum
 
@@ -208,7 +208,6 @@ from rest_framework.response import Response
 class GroupViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -216,7 +215,6 @@ class GroupViewSet(viewsets.ModelViewSet):
         return GroupSerializer
 
     def perform_create(self, serializer):
-        # Quando un gruppo viene creato, il creatore diventa proprietario e admin
         group = serializer.save(owner=self.request.user)
         GroupMembership.objects.create(
             user=self.request.user,
