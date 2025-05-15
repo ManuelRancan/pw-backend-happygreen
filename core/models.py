@@ -80,8 +80,8 @@ class GroupMembership(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
     joined_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        unique_together = ('user', 'group')
+class Meta:
+    unique_together = ('user', 'group')
 
 class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
