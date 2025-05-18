@@ -18,9 +18,6 @@ EMAIL_HOST_USER = 'rancan.manuel@gmail.com'  # Replace with your actual email
 EMAIL_HOST_PASSWORD = 'aufp cidi qasi vnxn'  # Use an app password if using Gmail
 DEFAULT_FROM_EMAIL = 'HappyGreen <rancan.manuel@gmail.com>'
 
-
-
-
 # Add to get the frontend URL
 FRONTEND_URL = 'happygreen://verify-email'  # Update with your frontend URL
 
