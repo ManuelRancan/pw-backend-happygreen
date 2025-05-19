@@ -1,3 +1,5 @@
+# models.py - Aggiornato con Like e Reactions
+
 import random
 
 from django.db import models
@@ -20,6 +22,7 @@ class User(AbstractUser):
     verification_token_expires = models.DateTimeField(blank=True, null=True)
     verification_code = models.CharField(max_length=6, null=True, blank=True)
     verification_code_expires = models.DateTimeField(null=True, blank=True)
+
     def set_verification_token(self):
         """Genera un nuovo token di verifica e imposta la scadenza (24 ore)"""
         self.verification_token = uuid.uuid4()
@@ -58,6 +61,7 @@ class User(AbstractUser):
             return True
         return False
 
+
 class Group(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
@@ -80,23 +84,76 @@ class GroupMembership(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
     joined_at = models.DateTimeField(auto_now_add=True)
 
-class Meta:
-    unique_together = ('user', 'group')
+    class Meta:
+        unique_together = ('user', 'group')
+
 
 class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     group = models.ForeignKey(Group, on_delete=models.CASCADE)
-    image_url = models.TextField(blank=True)  # Modificato per accettare stringhe vuote
+    image_url = models.TextField(blank=True)
     caption = models.TextField(blank=True, null=True)
     latitude = models.FloatField(blank=True, null=True)
     longitude = models.FloatField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return f"Post by {self.user.username} in {self.group.name}"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
 class Comment(models.Model):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Comment by {self.user.username} on post {self.post.id}"
+
+    class Meta:
+        ordering = ['created_at']
+
+
+# NUOVO: Modello per i Like
+class PostLike(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='likes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} likes post {self.post.id}"
+
+
+# NUOVO: Modello per le Reactions (emoji)
+class PostReaction(models.Model):
+    REACTION_CHOICES = [
+        ('👍', 'Thumbs Up'),
+        ('❤️', 'Heart'),
+        ('😂', 'Laughing'),
+        ('😮', 'Surprised'),
+        ('😢', 'Sad'),
+        ('😡', 'Angry'),
+        ('🔥', 'Fire'),
+        ('👏', 'Clap'),
+    ]
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='reactions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    reaction = models.CharField(max_length=10, choices=REACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')  # Un utente può avere solo una reaction per post
+
+    def __str__(self):
+        return f"{self.user.username} reacted {self.reaction} to post {self.post.id}"
+
 
 class DetectedObject(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
@@ -104,15 +161,18 @@ class DetectedObject(models.Model):
     description = models.TextField()
     recycle_tips = models.TextField()
 
+
 class Quiz(models.Model):
     question = models.TextField()
     correct_answer = models.TextField()
     options = models.JSONField()
 
+
 class Badge(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     icon_url = models.TextField()
+
 
 class UserBadge(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

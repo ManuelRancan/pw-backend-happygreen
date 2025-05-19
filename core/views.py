@@ -1,9 +1,14 @@
+# views.py - Aggiornato con Like e Reactions
+
 from rest_framework import viewsets, status
-from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore
-from .serializers import UserSerializer, GroupSerializer, GroupMembershipSerializer, PostSerializer, CommentSerializer, \
-    DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer, GroupDetailSerializer, \
-    GroupMembershipDetailSerializer
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore, \
+    PostLike, PostReaction
+from .serializers import (
+    UserSerializer, GroupSerializer, GroupMembershipSerializer, PostSerializer, CommentSerializer,
+    DetectedObjectSerializer, QuizSerializer, BadgeSerializer, UserBadgeSerializer, GroupDetailSerializer,
+    GroupMembershipDetailSerializer, PostLikeSerializer, PostReactionSerializer
+)
+from rest_framework.decorators import api_view, permission_classes, authentication_classes, action
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -30,185 +35,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class GroupViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-
-
-class GroupMembershipViewSet(viewsets.ModelViewSet):
-    queryset = GroupMembership.objects.all()
-    serializer_class = GroupMembershipSerializer
-
-
-class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all()
-    serializer_class = PostSerializer
-
-
-class CommentViewSet(viewsets.ModelViewSet):
-    queryset = Comment.objects.all()
-    serializer_class = CommentSerializer
-
-
-class DetectedObjectViewSet(viewsets.ModelViewSet):
-    queryset = DetectedObject.objects.all()
-    serializer_class = DetectedObjectSerializer
-
-
-class QuizViewSet(viewsets.ModelViewSet):
-    queryset = Quiz.objects.all()
-    serializer_class = QuizSerializer
-
-
-class BadgeViewSet(viewsets.ModelViewSet):
-    queryset = Badge.objects.all()
-    serializer_class = BadgeSerializer
-
-
-class UserBadgeViewSet(viewsets.ModelViewSet):
-    queryset = UserBadge.objects.all()
-    serializer_class = UserBadgeSerializer
-
-
-# Funzioni migliorate per gestire punteggi e leaderboard
-@api_view(['POST'])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
-def update_user_points(request):
-    """
-    Aggiorna i punti eco dell'utente quando guadagna punti in un gioco,
-    registrando solo il miglior punteggio per ciascun gioco
-    """
-    points = request.data.get('points', 0)
-    game_id = request.data.get('game_id', '')
-
-    if points <= 0:
-        return Response({'error': 'Punti non validi'}, status=status.HTTP_400_BAD_REQUEST)
-
-    user = request.user
-
-    # Verifica se esiste già un punteggio migliore per questo gioco/utente
-    if game_id:
-        # Cerca il punteggio migliore esistente
-        best_score = GameScore.objects.filter(user=user, game_id=game_id).order_by('-score').first()
-
-        if best_score is None:
-            # Primo punteggio per questo gioco, lo creiamo
-            GameScore.objects.create(
-                user=user,
-                game_id=game_id,
-                score=points
-            )
-            # Aggiorna anche i punti totali dell'utente
-            user.eco_points += points
-            user.save()
-        elif points > best_score.score:
-            # Il nuovo punteggio è migliore, calcoliamo la differenza e aggiungiamo solo quella
-            diff = points - best_score.score
-            best_score.score = points
-            best_score.save()
-
-            # Aggiorna i punti totali dell'utente con la differenza
-            user.eco_points += diff
-            user.save()
-        # Se il punteggio non è migliore, non facciamo nulla
-
-    return Response({
-        'success': True,
-        'message': f'Punteggio aggiornato con successo',
-        'total_points': user.eco_points
-    })
-
-
-@api_view(['GET'])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
-def get_leaderboard(request):
-    """
-    Ottiene la classifica globale o per gioco specifico,
-    mostrando solo il miglior punteggio per ciascun utente.
-    Per la classifica globale, calcoliamo la somma dei migliori punteggi di ogni gioco.
-    """
-    game_id = request.query_params.get('game_id', None)
-
-    if game_id:
-        # Per un gioco specifico, otteniamo solo il miglior punteggio di ogni utente
-        from django.db.models import Max
-        user_best_scores = GameScore.objects.filter(game_id=game_id).values('user').annotate(
-            best_score=Max('score')
-        ).order_by('-best_score')[:50]
-
-        # Costruiamo i dati della risposta
-        leaderboard_data = []
-        for entry in user_best_scores:
-            user = User.objects.get(id=entry['user'])
-            leaderboard_data.append({
-                'userId': user.id,
-                'username': user.username,
-                'score': entry['best_score'],
-                'avatar': user.avatar
-            })
-
-        return Response(leaderboard_data)
-    else:
-        # Per la classifica globale, calcoliamo la somma dei migliori punteggi per ogni gioco
-
-        # 1. Per ogni utente e per ogni gioco, troviamo il miglior punteggio
-        from django.db import connection
-
-        # Questa query SQL trova il punteggio massimo per ogni utente per ogni gioco
-        # e poi somma questi punteggi massimi per ogni utente
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    user_id, 
-                    SUM(max_score) as total_score 
-                FROM (
-                    SELECT 
-                        user_id, 
-                        game_id, 
-                        MAX(score) as max_score 
-                    FROM 
-                        core_gamescore 
-                    GROUP BY 
-                        user_id, game_id
-                ) best_scores 
-                GROUP BY 
-                    user_id 
-                ORDER BY 
-                    total_score DESC
-                LIMIT 50
-            """)
-
-            rows = cursor.fetchall()
-
-        # Costruiamo i dati della risposta
-        leaderboard_data = []
-        for row in rows:
-            user_id, total_score = row
-            try:
-                user = User.objects.get(id=user_id)
-                leaderboard_data.append({
-                    'userId': user.id,
-                    'username': user.username,
-                    'ecoPoints': int(total_score),  # Convertiamo in intero per sicurezza
-                    'avatar': user.avatar
-                })
-            except User.DoesNotExist:
-                # Ignoriamo utenti che potrebbero essere stati eliminati
-                pass
-
-        return Response(leaderboard_data)
-
-
-# views.py - Nuove views per gestire i gruppi e i membri
-
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-
-
-class GroupViewSet(viewsets.ModelViewSet):
-    queryset = Group.objects.all()
-    serializer_class = GroupSerializer
-    authentication_classes = [TokenAuthentication]  # Add this line
+    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -232,7 +59,6 @@ class GroupViewSet(viewsets.ModelViewSet):
         group = self.get_object()
         user = request.user
 
-        # Verifica se l'utente è già membro
         if GroupMembership.objects.filter(user=user, group=group).exists():
             return Response(
                 {'error': 'Sei già membro di questo gruppo'},
@@ -240,7 +66,6 @@ class GroupViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            # Aggiungi l'utente al gruppo come studente
             membership = GroupMembership.objects.create(
                 user=user,
                 group=group,
@@ -258,18 +83,15 @@ class GroupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-
     @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):
         """
-        Permette agli admin di aggiungere altri membri (funzionalità esistente)
+        Permette agli admin di aggiungere altri membri
         """
         group = self.get_object()
         user_id = request.data.get('user_id')
         role = request.data.get('role', 'student')
 
-        # Verifica che solo il proprietario o admin può aggiungere membri
         is_authorized = GroupMembership.objects.filter(
             group=group,
             user=request.user,
@@ -285,14 +107,12 @@ class GroupViewSet(viewsets.ModelViewSet):
         try:
             user = User.objects.get(id=user_id)
 
-            # Verifica se l'utente è già membro
             if GroupMembership.objects.filter(user=user, group=group).exists():
                 return Response(
                     {'error': 'L\'utente è già membro di questo gruppo'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Aggiungi l'utente al gruppo
             membership = GroupMembership.objects.create(
                 user=user,
                 group=group,
@@ -315,7 +135,6 @@ class GroupViewSet(viewsets.ModelViewSet):
         group = self.get_object()
         user_id = request.data.get('user_id')
 
-        # Verifica che solo il proprietario o admin può rimuovere membri
         is_authorized = GroupMembership.objects.filter(
             group=group,
             user=request.user,
@@ -329,7 +148,6 @@ class GroupViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            # Non permettere la rimozione del proprietario
             target_user = User.objects.get(id=user_id)
             if target_user == group.owner:
                 return Response(
@@ -354,7 +172,6 @@ class GroupViewSet(viewsets.ModelViewSet):
         user_id = request.data.get('user_id')
         new_role = request.data.get('role')
 
-        # Verifica che solo il proprietario o admin può cambiare ruoli
         is_authorized = GroupMembership.objects.filter(
             group=group,
             user=request.user,
@@ -371,7 +188,6 @@ class GroupViewSet(viewsets.ModelViewSet):
             target_user = User.objects.get(id=user_id)
             membership = GroupMembership.objects.get(user=target_user, group=group)
 
-            # Non permettere di cambiare il ruolo del proprietario
             if target_user == group.owner and new_role != 'admin':
                 return Response(
                     {'error': 'Non puoi cambiare il ruolo del proprietario'},
@@ -402,3 +218,349 @@ class GroupViewSet(viewsets.ModelViewSet):
                 groups.append(group)
 
         return Response(GroupSerializer(groups, many=True).data)
+
+
+class GroupMembershipViewSet(viewsets.ModelViewSet):
+    queryset = GroupMembership.objects.all()
+    serializer_class = GroupMembershipSerializer
+
+
+# AGGIORNATO: PostViewSet con like e reactions
+class PostViewSet(viewsets.ModelViewSet):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        IMPORTANTE: Filtra i post in base al gruppo specificato nel query parameter
+        """
+        queryset = Post.objects.all()
+        group_id = self.request.query_params.get('group', None)
+
+        if group_id is not None:
+            try:
+                group_id = int(group_id)
+                # Verifica che l'utente sia membro del gruppo
+                is_member = GroupMembership.objects.filter(
+                    user=self.request.user,
+                    group_id=group_id
+                ).exists()
+
+                # Verifica che l'utente sia il proprietario del gruppo
+                is_owner = Group.objects.filter(
+                    id=group_id,
+                    owner=self.request.user
+                ).exists()
+
+                if is_member or is_owner:
+                    # Filtra solo i post di questo gruppo
+                    queryset = queryset.filter(group_id=group_id)
+                else:
+                    # Se non è membro né proprietario, restituisci queryset vuoto
+                    queryset = Post.objects.none()
+            except (ValueError, TypeError):
+                # Se group_id non è un intero valido, restituisci queryset vuoto
+                queryset = Post.objects.none()
+        else:
+            # Se non è specificato un gruppo, restituisci solo i post dei gruppi dell'utente
+            user_groups = GroupMembership.objects.filter(user=self.request.user).values_list('group_id', flat=True)
+            owned_groups = Group.objects.filter(owner=self.request.user).values_list('id', flat=True)
+            all_user_groups = list(user_groups) + list(owned_groups)
+            queryset = queryset.filter(group_id__in=all_user_groups)
+
+        # Ordina i post dal più recente al più vecchio
+        return queryset.order_by('-created_at')
+
+    def get_serializer_context(self):
+        """Passa il context al serializer per calcolare i campi user-specific"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+    def perform_create(self, serializer):
+        """
+        Verifica che l'utente possa creare post nel gruppo specificato
+        """
+        group_id = serializer.validated_data.get('group').id
+
+        # Verifica che l'utente sia membro del gruppo o proprietario
+        is_member = GroupMembership.objects.filter(
+            user=self.request.user,
+            group_id=group_id
+        ).exists()
+
+        is_owner = Group.objects.filter(
+            id=group_id,
+            owner=self.request.user
+        ).exists()
+
+        if not (is_member or is_owner):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Non hai il permesso di creare post in questo gruppo")
+
+        # Salva il post con l'utente corrente
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def toggle_like(self, request, pk=None):
+        """
+        NUOVO: Toggle like per un post
+        """
+        post = self.get_object()
+
+        try:
+            # Cerca se l'utente ha già messo like
+            like = PostLike.objects.get(post=post, user=request.user)
+            # Se esiste, rimuovi il like
+            like.delete()
+            liked = False
+        except PostLike.DoesNotExist:
+            # Se non esiste, crea il like
+            PostLike.objects.create(post=post, user=request.user)
+            liked = True
+
+        # Restituisci lo stato aggiornato
+        return Response({
+            'liked': liked,
+            'like_count': post.likes.count()
+        })
+
+    @action(detail=True, methods=['post'])
+    def add_reaction(self, request, pk=None):
+        """
+        NUOVO: Aggiungi o cambia reaction per un post
+        """
+        post = self.get_object()
+        reaction_emoji = request.data.get('reaction')
+
+        if not reaction_emoji:
+            return Response(
+                {'error': 'Reaction emoji richiesta'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Valida che la reaction sia tra quelle supportate
+        valid_reactions = [choice[0] for choice in PostReaction.REACTION_CHOICES]
+        if reaction_emoji not in valid_reactions:
+            return Response(
+                {'error': 'Reaction non valida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Cerca se l'utente ha già una reaction
+            reaction = PostReaction.objects.get(post=post, user=request.user)
+            if reaction.reaction == reaction_emoji:
+                # Se è la stessa reaction, rimuovila
+                reaction.delete()
+                removed = True
+            else:
+                # Se è diversa, aggiornala
+                reaction.reaction = reaction_emoji
+                reaction.save()
+                removed = False
+        except PostReaction.DoesNotExist:
+            # Se non esiste, crea la reaction
+            PostReaction.objects.create(post=post, user=request.user, reaction=reaction_emoji)
+            removed = False
+
+        # Conta tutte le reactions per questo post
+        reactions_count = {}
+        for reaction_obj in post.reactions.all():
+            emoji = reaction_obj.reaction
+            if emoji in reactions_count:
+                reactions_count[emoji] += 1
+            else:
+                reactions_count[emoji] = 1
+
+        return Response({
+            'removed': removed,
+            'user_reaction': None if removed else reaction_emoji,
+            'reactions_count': reactions_count
+        })
+
+    @action(detail=True, methods=['get'])
+    def reactions(self, request, pk=None):
+        """
+        NUOVO: Ottieni tutte le reactions di un post con utenti che le hanno messe
+        """
+        post = self.get_object()
+        reactions = post.reactions.all()
+
+        # Raggruppa per emoji
+        reactions_by_emoji = {}
+        for reaction in reactions:
+            emoji = reaction.reaction
+            if emoji not in reactions_by_emoji:
+                reactions_by_emoji[emoji] = []
+            reactions_by_emoji[emoji].append({
+                'user_id': reaction.user.id,
+                'username': reaction.user.username,
+                'created_at': reaction.created_at
+            })
+
+        return Response(reactions_by_emoji)
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all()
+    serializer_class = CommentSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        """
+        Verifica che l'utente possa commentare sul post
+        """
+        post = serializer.validated_data.get('post')
+        group_id = post.group.id
+
+        # Verifica che l'utente sia membro del gruppo
+        is_member = GroupMembership.objects.filter(
+            user=self.request.user,
+            group_id=group_id
+        ).exists()
+
+        is_owner = Group.objects.filter(
+            id=group_id,
+            owner=self.request.user
+        ).exists()
+
+        if not (is_member or is_owner):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Non hai il permesso di commentare in questo gruppo")
+
+        serializer.save(user=self.request.user)
+
+
+class DetectedObjectViewSet(viewsets.ModelViewSet):
+    queryset = DetectedObject.objects.all()
+    serializer_class = DetectedObjectSerializer
+
+
+class QuizViewSet(viewsets.ModelViewSet):
+    queryset = Quiz.objects.all()
+    serializer_class = QuizSerializer
+
+
+class BadgeViewSet(viewsets.ModelViewSet):
+    queryset = Badge.objects.all()
+    serializer_class = BadgeSerializer
+
+
+class UserBadgeViewSet(viewsets.ModelViewSet):
+    queryset = UserBadge.objects.all()
+    serializer_class = UserBadgeSerializer
+
+
+# Funzioni per gestire punteggi e leaderboard (invariate)
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def update_user_points(request):
+    """
+    Aggiorna i punti eco dell'utente quando guadagna punti in un gioco
+    """
+    points = request.data.get('points', 0)
+    game_id = request.data.get('game_id', '')
+
+    if points <= 0:
+        return Response({'error': 'Punti non validi'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = request.user
+
+    if game_id:
+        best_score = GameScore.objects.filter(user=user, game_id=game_id).order_by('-score').first()
+
+        if best_score is None:
+            GameScore.objects.create(
+                user=user,
+                game_id=game_id,
+                score=points
+            )
+            user.eco_points += points
+            user.save()
+        elif points > best_score.score:
+            diff = points - best_score.score
+            best_score.score = points
+            best_score.save()
+            user.eco_points += diff
+            user.save()
+
+    return Response({
+        'success': True,
+        'message': f'Punteggio aggiornato con successo',
+        'total_points': user.eco_points
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_leaderboard(request):
+    """
+    Ottiene la classifica globale o per gioco specifico
+    """
+    game_id = request.query_params.get('game_id', None)
+
+    if game_id:
+        from django.db.models import Max
+        user_best_scores = GameScore.objects.filter(game_id=game_id).values('user').annotate(
+            best_score=Max('score')
+        ).order_by('-best_score')[:50]
+
+        leaderboard_data = []
+        for entry in user_best_scores:
+            user = User.objects.get(id=entry['user'])
+            leaderboard_data.append({
+                'userId': user.id,
+                'username': user.username,
+                'score': entry['best_score'],
+                'avatar': user.avatar
+            })
+
+        return Response(leaderboard_data)
+    else:
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    user_id, 
+                    SUM(max_score) as total_score 
+                FROM (
+                    SELECT 
+                        user_id, 
+                        game_id, 
+                        MAX(score) as max_score 
+                    FROM 
+                        core_gamescore 
+                    GROUP BY 
+                        user_id, game_id
+                ) best_scores 
+                GROUP BY 
+                    user_id 
+                ORDER BY 
+                    total_score DESC
+                LIMIT 50
+            """)
+
+            rows = cursor.fetchall()
+
+        leaderboard_data = []
+        for row in rows:
+            user_id, total_score = row
+            try:
+                user = User.objects.get(id=user_id)
+                leaderboard_data.append({
+                    'userId': user.id,
+                    'username': user.username,
+                    'ecoPoints': int(total_score),
+                    'avatar': user.avatar
+                })
+            except User.DoesNotExist:
+                pass
+
+        return Response(leaderboard_data)
