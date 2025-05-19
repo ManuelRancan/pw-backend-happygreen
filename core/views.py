@@ -225,7 +225,46 @@ class GroupViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=['post'])
+    def join(self, request, pk=None):
+        """
+        Permette all'utente corrente di unirsi al gruppo
+        """
+        group = self.get_object()
+        user = request.user
+
+        # Verifica se l'utente è già membro
+        if GroupMembership.objects.filter(user=user, group=group).exists():
+            return Response(
+                {'error': 'Sei già membro di questo gruppo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Aggiungi l'utente al gruppo come studente
+            membership = GroupMembership.objects.create(
+                user=user,
+                group=group,
+                role='student'
+            )
+
+            return Response(
+                GroupMembershipDetailSerializer(membership).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            return Response(
+                {'error': f'Errore nell\'unirsi al gruppo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+    @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):
+        """
+        Permette agli admin di aggiungere altri membri (funzionalità esistente)
+        """
         group = self.get_object()
         user_id = request.data.get('user_id')
         role = request.data.get('role', 'student')
