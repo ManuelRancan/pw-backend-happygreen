@@ -60,12 +60,23 @@ class PostReactionSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        # Formatta la data in ISO format
+        if instance.created_at:
+            representation['created_at'] = instance.created_at.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+        return representation
+
     class Meta:
         model = Comment
         fields = ['id', 'post', 'user', 'content', 'created_at']
 
 
 # AGGIORNATO: Serializer per Post con like, reactions e commenti
+# In core/serializers.py - AGGIORNATO: Serializer per Post con like, reactions e commenti
+
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
@@ -98,6 +109,25 @@ class PostSerializer(serializers.ModelSerializer):
             reaction = obj.reactions.filter(user=request.user).first()
             return reaction.reaction if reaction else None
         return None
+
+    # Aggiungiamo metodi per formattare le date
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        # Formatta le date in ISO format con timezone
+        if instance.created_at:
+            representation['created_at'] = instance.created_at.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+        # Formatta le date dei commenti
+        if 'comments' in representation:
+            for comment in representation['comments']:
+                if 'created_at' in comment:
+                    # Recupera l'oggetto comment per formattare la data
+                    comment_obj = instance.comments.filter(id=comment['id']).first()
+                    if comment_obj:
+                        comment['created_at'] = comment_obj.created_at.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+        return representation
 
     class Meta:
         model = Post

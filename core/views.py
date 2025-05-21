@@ -232,6 +232,8 @@ class PostViewSet(viewsets.ModelViewSet):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
+    # In core/views.py, modifica il get_queryset del PostViewSet
+
     def get_queryset(self):
         """
         IMPORTANTE: Filtra i post in base al gruppo specificato nel query parameter
@@ -270,8 +272,10 @@ class PostViewSet(viewsets.ModelViewSet):
             all_user_groups = list(user_groups) + list(owned_groups)
             queryset = queryset.filter(group_id__in=all_user_groups)
 
-        # Ordina i post dal più recente al più vecchio
-        return queryset.order_by('-created_at')
+        # FIX: Ordina i post dal più recente al più vecchio e prefetch le relazioni
+        return queryset.select_related('user', 'group').prefetch_related(
+            'comments__user', 'likes__user', 'reactions__user'
+        ).order_by('-created_at')
 
     def get_serializer_context(self):
         """Passa il context al serializer per calcolare i campi user-specific"""
@@ -303,11 +307,10 @@ class PostViewSet(viewsets.ModelViewSet):
         # Salva il post con l'utente corrente
         serializer.save(user=self.request.user)
 
+    # In core/views.py - Metodi per like e reactions
+
     @action(detail=True, methods=['post'])
     def toggle_like(self, request, pk=None):
-        """
-        NUOVO: Toggle like per un post
-        """
         post = self.get_object()
 
         try:
@@ -330,7 +333,7 @@ class PostViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def add_reaction(self, request, pk=None):
         """
-        NUOVO: Aggiungi o cambia reaction per un post
+        Aggiungi o cambia reaction per un post
         """
         post = self.get_object()
         reaction_emoji = request.data.get('reaction')
@@ -356,28 +359,30 @@ class PostViewSet(viewsets.ModelViewSet):
                 # Se è la stessa reaction, rimuovila
                 reaction.delete()
                 removed = True
+                user_reaction = None
             else:
                 # Se è diversa, aggiornala
                 reaction.reaction = reaction_emoji
                 reaction.save()
                 removed = False
+                user_reaction = reaction_emoji
         except PostReaction.DoesNotExist:
             # Se non esiste, crea la reaction
             PostReaction.objects.create(post=post, user=request.user, reaction=reaction_emoji)
             removed = False
+            user_reaction = reaction_emoji
 
-        # Conta tutte le reactions per questo post
+        # Conta tutte le reactions per questo post raggruppate per emoji
+        from django.db.models import Count
         reactions_count = {}
-        for reaction_obj in post.reactions.all():
-            emoji = reaction_obj.reaction
-            if emoji in reactions_count:
-                reactions_count[emoji] += 1
-            else:
-                reactions_count[emoji] = 1
+        reactions_data = post.reactions.values('reaction').annotate(count=Count('reaction'))
+
+        for reaction_data in reactions_data:
+            reactions_count[reaction_data['reaction']] = reaction_data['count']
 
         return Response({
             'removed': removed,
-            'user_reaction': None if removed else reaction_emoji,
+            'user_reaction': user_reaction,
             'reactions_count': reactions_count
         })
 

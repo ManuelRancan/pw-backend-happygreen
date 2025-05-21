@@ -91,7 +91,7 @@ class GroupMembership(models.Model):
 class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     group = models.ForeignKey(Group, on_delete=models.CASCADE)
-    image_url = models.TextField(blank=True)
+    image_url = models.TextField(blank=True, null=True)
     caption = models.TextField(blank=True, null=True)
     latitude = models.FloatField(blank=True, null=True)
     longitude = models.FloatField(blank=True, null=True)
