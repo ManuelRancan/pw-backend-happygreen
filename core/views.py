@@ -1,4 +1,4 @@
-# views.py - Aggiornato con Like e Reactions
+# views.py - Correzione endpoint avatar
 
 from rest_framework import viewsets, status
 from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore, \
@@ -13,6 +13,12 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db.models import Max, Sum
+import base64
+import uuid
+import os
+from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 
 @api_view(['GET'])
@@ -26,12 +32,94 @@ def current_user(request):
     return Response(serializer.data)
 
 
+# NUOVO: Endpoint separato per aggiornamento avatar
+# views.py - Correzione per salvare avatar Base64 direttamente
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def update_user_avatar(request):
+    user = request.user
+    avatar_data = request.data.get('avatar')
+
+    if not avatar_data:
+        return Response(
+            {'error': 'Immagine avatar richiesta'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        print(f"Received avatar data: {avatar_data[:50]}...")  # Debug log
+
+        # CORREZIONE: Salva direttamente i dati base64 nel database
+        if avatar_data.startswith('data:image'):
+            # È già in formato base64, salvalo direttamente
+            user.avatar = avatar_data
+            print(f"Saving base64 avatar data for user {user.username}")
+        else:
+            # Se non è base64, prova a convertirlo
+            if avatar_data.startswith('content://'):
+                # È un URI locale, non possiamo usarlo direttamente
+                return Response(
+                    {'error': 'Formato immagine non supportato. Invia dati base64.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                # Assumiamo sia già un URL o dati validi
+                user.avatar = avatar_data
+
+        # Salva nel database
+        user.save()
+
+        print(f"Avatar updated successfully for user {user.username}")
+        print(f"Avatar data length: {len(user.avatar) if user.avatar else 0} characters")
+
+        return Response({
+            'success': True,
+            'avatar': user.avatar,  # Restituisci i dati base64 completi
+            'message': 'Avatar aggiornato con successo'
+        })
+
+    except Exception as e:
+        print(f"Error updating avatar: {str(e)}")
+        return Response(
+            {'error': f'Errore nell\'aggiornamento dell\'avatar: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# NUOVO: Endpoint separato per aggiornamento profilo
+@api_view(['PUT'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def update_user_profile(request):
+    """
+    Aggiorna il profilo dell'utente corrente
+    """
+    user = request.user
+    serializer = UserSerializer(user, data=request.data, partial=True)
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response({
+            'success': True,
+            'user': serializer.data,
+            'message': 'Profilo aggiornato con successo'
+        })
+    else:
+        return Response(
+            {'error': 'Dati non validi', 'details': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
 
+# Le altre classi viewset rimangono invariate...
 class GroupViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
@@ -225,14 +313,12 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
     serializer_class = GroupMembershipSerializer
 
 
-# AGGIORNATO: PostViewSet con like e reactions
+# Il resto delle classi viewset rimane invariato...
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
-
-    # In core/views.py, modifica il get_queryset del PostViewSet
 
     def get_queryset(self):
         """
@@ -306,8 +392,6 @@ class PostViewSet(viewsets.ModelViewSet):
 
         # Salva il post con l'utente corrente
         serializer.save(user=self.request.user)
-
-    # In core/views.py - Metodi per like e reactions
 
     @action(detail=True, methods=['post'])
     def toggle_like(self, request, pk=None):
