@@ -6,8 +6,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_USER_MODEL = 'core.User'
 SECRET_KEY = 'django-insecure-rx$^2n!0)3+e72m_!9#+vxu9b1y$f(w=3td!^@(zf=h8q-1n(e'
 DEBUG = True
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '836e-31-26-240-97.ngrok-free.app', '*', 'https://worm-shining-accurately.ngrok-free.app']
+# Assicurati che ALLOWED_HOSTS includa il tuo dominio ngrok
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'worm-shining-accurately.ngrok-free.app',  # Il tuo dominio ngrok
+]
+
+# Aggiungi questa configurazione per gestire le immagini base64 e file upload
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

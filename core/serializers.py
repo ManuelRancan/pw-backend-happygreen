@@ -1,4 +1,4 @@
-# serializers.py - Aggiornato con Like e Reactions
+# core/serializers.py - Aggiornato con contatori reali
 
 from rest_framework import serializers
 from .models import User, Group, GroupMembership, Post, Comment, DetectedObject, Quiz, Badge, UserBadge, GameScore, \
@@ -26,10 +26,27 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['email_verified']
 
 
+# AGGIORNATO: GroupSerializer con contatori reali
 class GroupSerializer(serializers.ModelSerializer):
+    member_count = serializers.SerializerMethodField()
+    post_count = serializers.SerializerMethodField()
+    owner_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Group
-        fields = '__all__'
+        fields = ['id', 'name', 'description', 'created_at', 'owner', 'owner_name', 'member_count', 'post_count']
+
+    def get_member_count(self, obj):
+        """Conta il numero reale di membri nel gruppo"""
+        return GroupMembership.objects.filter(group=obj).count()
+
+    def get_post_count(self, obj):
+        """Conta il numero reale di post nel gruppo"""
+        return Post.objects.filter(group=obj).count()
+
+    def get_owner_name(self, obj):
+        """Restituisce il nome del proprietario"""
+        return f"{obj.owner.first_name} {obj.owner.last_name}".strip() or obj.owner.username
 
 
 class GroupMembershipSerializer(serializers.ModelSerializer):
@@ -75,8 +92,6 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 # AGGIORNATO: Serializer per Post con like, reactions e commenti
-# In core/serializers.py - AGGIORNATO: Serializer per Post con like, reactions e commenti
-
 class PostSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
@@ -181,11 +196,22 @@ class GroupMembershipDetailSerializer(serializers.ModelSerializer):
 class GroupDetailSerializer(serializers.ModelSerializer):
     members = serializers.SerializerMethodField()
     owner_details = UserSerializer(source='owner', read_only=True)
+    member_count = serializers.SerializerMethodField()
+    post_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Group
-        fields = ['id', 'name', 'description', 'created_at', 'owner', 'owner_details', 'members']
+        fields = ['id', 'name', 'description', 'created_at', 'owner', 'owner_details', 'members', 'member_count',
+                  'post_count']
 
     def get_members(self, obj):
         memberships = GroupMembership.objects.filter(group=obj)
         return GroupMembershipDetailSerializer(memberships, many=True).data
+
+    def get_member_count(self, obj):
+        """Conta il numero reale di membri nel gruppo"""
+        return GroupMembership.objects.filter(group=obj).count()
+
+    def get_post_count(self, obj):
+        """Conta il numero reale di post nel gruppo"""
+        return Post.objects.filter(group=obj).count()

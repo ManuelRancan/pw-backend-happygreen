@@ -19,6 +19,9 @@ import os
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
@@ -32,13 +35,14 @@ def current_user(request):
     return Response(serializer.data)
 
 
-# NUOVO: Endpoint separato per aggiornamento avatar
-# views.py - Correzione per salvare avatar Base64 direttamente
-
+# NUOVO: Endpoint separato per aggiornamento avatar - VERSIONE CORRETTA
 @api_view(['POST'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def update_user_avatar(request):
+    """
+    Aggiorna l'avatar dell'utente corrente
+    """
     user = request.user
     avatar_data = request.data.get('avatar')
 
@@ -49,39 +53,38 @@ def update_user_avatar(request):
         )
 
     try:
-        print(f"Received avatar data: {avatar_data[:50]}...")  # Debug log
+        logger.info(f"Received avatar update request for user {user.username}")
+        logger.info(f"Avatar data length: {len(avatar_data)}")
 
-        # CORREZIONE: Salva direttamente i dati base64 nel database
-        if avatar_data.startswith('data:image'):
-            # È già in formato base64, salvalo direttamente
-            user.avatar = avatar_data
-            print(f"Saving base64 avatar data for user {user.username}")
-        else:
-            # Se non è base64, prova a convertirlo
-            if avatar_data.startswith('content://'):
-                # È un URI locale, non possiamo usarlo direttamente
-                return Response(
-                    {'error': 'Formato immagine non supportato. Invia dati base64.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            else:
-                # Assumiamo sia già un URL o dati validi
-                user.avatar = avatar_data
+        # Validazione del formato base64
+        if not avatar_data.startswith('data:image'):
+            return Response(
+                {'error': 'Formato immagine non valido. Richiesto formato base64 con prefisso data:image'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Salva nel database
+        # Validazione dimensione (max 5MB per sicurezza)
+        if len(avatar_data) > 5 * 1024 * 1024:  # 5MB
+            return Response(
+                {'error': 'Immagine troppo grande. Dimensione massima: 5MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Salva direttamente i dati base64 nel database
+        user.avatar = avatar_data
         user.save()
 
-        print(f"Avatar updated successfully for user {user.username}")
-        print(f"Avatar data length: {len(user.avatar) if user.avatar else 0} characters")
+        logger.info(f"Avatar updated successfully for user {user.username}")
+        logger.info(f"New avatar data length: {len(user.avatar) if user.avatar else 0}")
 
         return Response({
             'success': True,
-            'avatar': user.avatar,  # Restituisci i dati base64 completi
+            'avatar': user.avatar,
             'message': 'Avatar aggiornato con successo'
         })
 
     except Exception as e:
-        print(f"Error updating avatar: {str(e)}")
+        logger.error(f"Error updating avatar for user {user.username}: {str(e)}")
         return Response(
             {'error': f'Errore nell\'aggiornamento dell\'avatar: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -313,7 +316,7 @@ class GroupMembershipViewSet(viewsets.ModelViewSet):
     serializer_class = GroupMembershipSerializer
 
 
-# Il resto delle classi viewset rimane invariato...
+# Il resto delle classi viewset aggiornato per gestire gli avatar...
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
@@ -389,6 +392,14 @@ class PostViewSet(viewsets.ModelViewSet):
         if not (is_member or is_owner):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Non hai il permesso di creare post in questo gruppo")
+
+        # Log dell'immagine ricevuta
+        image_url = serializer.validated_data.get('image_url', '')
+        logger.info(f"Creating post with image_url length: {len(image_url)}")
+        if image_url and image_url.startswith('data:image'):
+            logger.info("Received base64 image for post")
+        elif image_url:
+            logger.info(f"Received image URL: {image_url[:50]}...")
 
         # Salva il post con l'utente corrente
         serializer.save(user=self.request.user)
@@ -607,7 +618,7 @@ def get_leaderboard(request):
                 'userId': user.id,
                 'username': user.username,
                 'score': entry['best_score'],
-                'avatar': user.avatar
+                'avatar': user.avatar  # Include avatar nella classifica
             })
 
         return Response(leaderboard_data)
@@ -647,7 +658,7 @@ def get_leaderboard(request):
                     'userId': user.id,
                     'username': user.username,
                     'ecoPoints': int(total_score),
-                    'avatar': user.avatar
+                    'avatar': user.avatar  # Include avatar nella classifica
                 })
             except User.DoesNotExist:
                 pass
