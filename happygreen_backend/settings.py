@@ -12,11 +12,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Assicurati che ALLOWED_HOSTS includa il tuo dominio ngrok
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    'worm-shining-accurately.ngrok-free.app',  # Il tuo dominio ngrok
-]
+ALLOWED_HOSTS = ['*']
 
 # Aggiungi questa configurazione per gestire le immagini base64 e file upload
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
@@ -86,8 +82,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'pwhappygreen_db',
         'USER': 'root',
-        'PASSWORD': 'password',
-        'HOST': 'localhost',
+        'PASSWORD': 'rootroot',
+        'HOST': 'db',
         'PORT': '3306',
     }
 }
