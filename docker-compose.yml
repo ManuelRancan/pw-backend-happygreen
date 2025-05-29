@@ -7,8 +7,8 @@ services:
       #MYSQL_DATABASE: pwtriptales_db
       #MYSQL_USER: root
       #MYSQL_PASSWORD: rootroot
-    ports:
-      - "3306:3306"
+    expose:
+      - "3306"
     volumes:
       - ./db:/docker-entrypoint-initdb.d
   web:
